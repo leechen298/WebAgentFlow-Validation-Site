@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
-import { inventorySeed } from '../data/inventorySeed';
+import { computed, onMounted, reactive, ref } from 'vue';
 import type { InventoryItem, InventoryStatus } from '../types/inventory';
 
 type InventoryForm = {
@@ -11,10 +10,25 @@ type InventoryForm = {
   status: InventoryStatus;
 };
 
-const items = ref<InventoryItem[]>(inventorySeed.map((item) => ({ ...item })));
+type ApiEnvelope<T> = {
+  code: number;
+  msg: string;
+  data: T;
+};
+
+type InventoryListData = {
+  items: InventoryItem[];
+};
+
+type InventoryItemData = {
+  item: InventoryItem;
+};
+
+const items = ref<InventoryItem[]>([]);
 const query = ref('');
 const selectedItemId = ref<string | null>(null);
-const notice = ref('Ready to manage inventory records.');
+const notice = ref('Loading inventory records from the backend.');
+const isLoading = ref(false);
 
 const createForm = reactive<InventoryForm>({
   sku: '',
@@ -54,26 +68,68 @@ const filteredItems = computed(() => {
   });
 });
 
-function createInventoryItem() {
-  const nextItem: InventoryItem = {
-    id: `inv-${Date.now()}`,
+const downloadHref = computed(() => {
+  const normalizedQuery = query.value.trim();
+
+  if (!normalizedQuery) {
+    return '/api/inventory/export.csv';
+  }
+
+  const params = new URLSearchParams({ query: normalizedQuery });
+  return `/api/inventory/export.csv?${params.toString()}`;
+});
+
+onMounted(() => {
+  void loadInventoryItems();
+});
+
+async function loadInventoryItems() {
+  isLoading.value = true;
+
+  try {
+    const payload = await requestJson<InventoryListData>('/api/inventory');
+    items.value = payload.data.items;
+    notice.value = 'Ready to manage inventory records.';
+  } catch (error) {
+    notice.value = error instanceof Error ? error.message : 'Unable to load inventory records.';
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function createInventoryItem() {
+  const payload = {
     sku: createForm.sku.trim(),
     name: createForm.name.trim(),
     category: createForm.category.trim(),
     stock: Number(createForm.stock),
     status: createForm.status,
-    updatedAt: formatTimestamp(),
   };
 
-  items.value = [nextItem, ...items.value];
-  notice.value = `Created inventory item ${nextItem.name}.`;
-  Object.assign(createForm, {
-    sku: '',
-    name: '',
-    category: '',
-    stock: 0,
-    status: 'active' as InventoryStatus,
-  });
+  isLoading.value = true;
+
+  try {
+    const response = await requestJson<InventoryItemData>('/api/inventory', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const nextItem = response.data.item;
+
+    items.value = [nextItem, ...items.value];
+    notice.value = `Created inventory item ${nextItem.name}.`;
+    Object.assign(createForm, {
+      sku: '',
+      name: '',
+      category: '',
+      stock: 0,
+      status: 'active' as InventoryStatus,
+    });
+  } catch (error) {
+    notice.value = error instanceof Error ? error.message : 'Unable to create inventory item.';
+  } finally {
+    isLoading.value = false;
+  }
 }
 
 function startEditing(item: InventoryItem) {
@@ -88,28 +144,52 @@ function startEditing(item: InventoryItem) {
   notice.value = `Editing ${item.name}.`;
 }
 
-function saveInventoryItem() {
+async function saveInventoryItem() {
   if (!selectedItem.value) {
     notice.value = 'Choose an inventory item before saving edits.';
     return;
   }
 
-  items.value = items.value.map((item) => {
-    if (item.id !== selectedItem.value?.id) {
-      return item;
-    }
+  isLoading.value = true;
 
-    return {
-      ...item,
+  try {
+    const response = await requestJson<InventoryItemData>(
+      `/api/inventory/${selectedItem.value.id}`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: editForm.name.trim(),
+          category: editForm.category.trim(),
+          stock: Number(editForm.stock),
+          status: editForm.status,
+        }),
+      },
+    );
+    const updatedItem = response.data.item;
+
+    items.value = items.value.map((item) => {
+      if (item.id !== updatedItem.id) {
+        return item;
+      }
+
+      return updatedItem;
+    });
+
+    Object.assign(editForm, {
+      sku: updatedItem.sku,
       name: editForm.name.trim(),
       category: editForm.category.trim(),
       stock: Number(editForm.stock),
       status: editForm.status,
-      updatedAt: formatTimestamp(),
-    };
-  });
+    });
 
-  notice.value = `Updated inventory item ${editForm.name.trim()}.`;
+    notice.value = `Updated inventory item ${updatedItem.name}.`;
+  } catch (error) {
+    notice.value = error instanceof Error ? error.message : 'Unable to update inventory item.';
+  } finally {
+    isLoading.value = false;
+  }
 }
 
 function clearSearch() {
@@ -117,17 +197,15 @@ function clearSearch() {
   notice.value = 'Showing all inventory items.';
 }
 
-function formatTimestamp() {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+async function requestJson<T>(input: string, init?: RequestInit): Promise<ApiEnvelope<T>> {
+  const response = await fetch(input, init);
+  const payload = (await response.json()) as ApiEnvelope<T>;
 
-  return formatter.format(new Date()).replace(',', '');
+  if (!response.ok || payload.code !== 0) {
+    throw new Error(payload.msg || `Request failed with status ${response.status}.`);
+  }
+
+  return payload;
 }
 </script>
 
@@ -174,6 +252,9 @@ function formatTimestamp() {
           placeholder="Search by SKU, name, or category"
         />
         <button type="button" class="secondary-button" @click="clearSearch">Clear</button>
+        <a class="secondary-button download-link" :href="downloadHref" download="inventory-export.csv">
+          Download CSV
+        </a>
       </div>
     </section>
 
@@ -186,7 +267,12 @@ function formatTimestamp() {
           </div>
         </div>
 
-        <div v-if="filteredItems.length" class="table-scroll">
+        <div v-if="isLoading && !filteredItems.length" class="empty-state">
+          <h3>Loading inventory items</h3>
+          <p>Waiting for the backend inventory API.</p>
+        </div>
+
+        <div v-else-if="filteredItems.length" class="table-scroll">
           <table>
             <thead>
               <tr>
@@ -254,7 +340,9 @@ function formatTimestamp() {
             <option value="paused">Paused</option>
           </select>
 
-          <button type="submit" class="primary-button">Create inventory item</button>
+          <button type="submit" class="primary-button" :disabled="isLoading">
+            Create inventory item
+          </button>
         </form>
 
         <form class="form-panel" @submit.prevent="saveInventoryItem">
@@ -291,7 +379,9 @@ function formatTimestamp() {
             <option value="paused">Paused</option>
           </select>
 
-          <button type="submit" class="primary-button" :disabled="!selectedItem">Save edits</button>
+          <button type="submit" class="primary-button" :disabled="!selectedItem || isLoading">
+            Save edits
+          </button>
         </form>
       </aside>
     </div>

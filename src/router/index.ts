@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import IndexPage from '../pages/IndexPage.vue';
 import InventoryPage from '../pages/InventoryPage.vue';
 
 const router = createRouter({
@@ -6,7 +7,8 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/inventory',
+      name: 'index',
+      component: IndexPage,
     },
     {
       path: '/inventory',

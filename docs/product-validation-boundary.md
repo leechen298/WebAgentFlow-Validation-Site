@@ -14,6 +14,20 @@ Inventory management supports:
 - create inventory item
 - search inventory item
 - edit inventory item
+- download inventory table CSV
+
+## Product Backend
+
+This repository may expose product-shaped backend endpoints that the visible
+Inventory page uses directly, such as:
+
+- `GET /api/inventory`
+- `POST /api/inventory`
+- `PUT /api/inventory/:id`
+- `GET /api/inventory/export.csv`
+
+Those endpoints are part of the product-like validation target. They are not
+private evaluator controls and should not expose hidden reset or seed mechanics.
 
 ## Not a Fixture Site
 
@@ -58,8 +72,10 @@ The WebAgentFlow main repository should not know:
 - internal state shape
 - seed copy
 - implementation-specific business logic
+- private API implementation details
 
 ## External Validation Rule
 
 WebAgentFlow should treat this site as a black-box target. The validation signal
-is visible product behavior, not implementation detail access.
+is visible product behavior and public product-like responses, not
+implementation detail access.

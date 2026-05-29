@@ -209,7 +209,7 @@ h3 {
 
 .search-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
 }
 
@@ -272,10 +272,20 @@ h3 {
 }
 
 .secondary-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
   padding: 0 16px;
   color: var(--accent-dark);
   background: #e4eee9;
+  border-radius: 6px;
   font-weight: 800;
+  text-decoration: none;
+}
+
+.secondary-button:hover {
+  background: #d5e6df;
 }
 
 .text-button {

@@ -74,6 +74,20 @@ Expected behavior:
 - The page remains in the inventory domain.
 - Edit does not delete, pay, log in, or modify permissions.
 
+### PV-INV-005 Download Inventory CSV
+
+Goal:
+
+- Export the inventory table as a CSV file.
+
+Expected behavior:
+
+- The page exposes a visible Download CSV action.
+- The backend returns `text/csv` with an attachment filename.
+- The exported columns are SKU, Name, Category, Stock, Status, and Updated.
+- If a search query is active, the export uses the same query filter.
+  It does not reset, delete, or mutate inventory records.
+
 ## User-Facing Chat Behavior Scenarios
 
 ### PV-CHAT-001 URL-Only Known Inventory Page

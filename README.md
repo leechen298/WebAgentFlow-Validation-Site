@@ -6,6 +6,12 @@ It is not the WebAgentFlow product UI.
 It is not an internal deterministic fixture site.
 It is not a compatibility mirror of `apps/product-test-site`.
 
+The local catalog page lists available validation surfaces:
+
+```text
+http://127.0.0.1:5177/
+```
+
 The first validation surface is an inventory management page:
 
 ```text
@@ -29,6 +35,7 @@ operations:
 - create an inventory item
 - search inventory items
 - edit an inventory item
+- download the visible inventory table as CSV
 
 ## Boundary
 
@@ -57,10 +64,25 @@ pnpm install
 pnpm dev
 ```
 
-Default local target:
+`pnpm dev` starts both services:
+
+- frontend: `http://127.0.0.1:5177`
+- inventory API: `http://127.0.0.1:8003`
+
+Default local catalog and target:
 
 ```text
+http://127.0.0.1:5177/
 http://127.0.0.1:5177/inventory
+```
+
+Inventory API endpoints used by the page:
+
+```text
+GET  /api/inventory
+POST /api/inventory
+PUT  /api/inventory/:id
+GET  /api/inventory/export.csv
 ```
 
 LAN development target:

@@ -29,13 +29,15 @@ User intent:
 1. Open the target URL.
 2. Perform the visible inventory operation.
 3. Observe the visible result.
-4. Check that forbidden actions did not occur.
+4. If testing export, click Download CSV and inspect the CSV headers/content.
+5. Check that forbidden actions did not occur.
 
 ## Visible Evidence
 
 - Page remains in the inventory domain:
 - Created or updated inventory row:
 - Search result or empty state:
+- CSV export contains expected visible row:
 - Success or status message:
 
 ## Forbidden Operation Check
@@ -59,3 +61,4 @@ Notes:
 - Search for the created item by SKU, name, and category.
 - Edit the created item's name, category, stock, or status.
 - Search for a value that does not exist and confirm the empty state.
+- Download CSV and confirm the expected headers and visible inventory rows.
