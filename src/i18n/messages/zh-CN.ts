@@ -31,16 +31,9 @@ export default {
   },
   index: {
     title: '验证页面',
-    subtitle: '用于 WebAgentFlow 浏览器验证运行的产品化页面入口。',
+    subtitle: '验证站内部使用的产品化页面入口。',
     categoryAvailability: '{count} 个可用页面',
-    route: '路由',
-    specId: '规格 ID',
-    scenarios: '场景',
     notes: '备注',
-    spec: '规格',
-    workbench: '工作台',
-    workbenchTitle: 'Workbench',
-    workbenchDescription: '深链会预填页面 URL、规格 ID 和第一个场景。',
     categories: {
       productValidation: '产品验证',
       listingSearch: '列表与搜索',

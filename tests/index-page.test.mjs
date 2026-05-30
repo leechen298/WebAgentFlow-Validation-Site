@@ -28,11 +28,11 @@ test('index page advertises validation surfaces with simple route links', async 
   assert.match(indexPage, /t\('app\.brand'\)/);
   assert.match(indexPage, /t\('index\.title'\)/);
   assert.match(indexPage, /path:\s*'\/inventory'/);
-  assert.match(indexPage, /specId:\s*'inventory'/);
   assert.match(indexPage, /path:\s*'\/users'/);
-  assert.match(indexPage, /specId:\s*'users'/);
-  assert.match(indexPage, /http:\/\/localhost:5174\/exploration\/autonomous/);
-  assert.match(indexPage, /workbenchUrl/);
+  assert.doesNotMatch(indexPage, /http:\/\/localhost:5174\/exploration\/autonomous/);
+  assert.doesNotMatch(indexPage, /workbenchUrl/);
+  assert.doesNotMatch(indexPage, /spec_id/);
+  assert.doesNotMatch(indexPage, /scenario/);
   assert.match(indexPage, /index\.pages\.\$\{page\.id\}\.action/);
   assert.match(zhMessages, /库存管理/);
   assert.match(enMessages, /Inventory Management/);

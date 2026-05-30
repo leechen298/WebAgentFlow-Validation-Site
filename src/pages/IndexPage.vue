@@ -8,8 +8,6 @@ interface ValidationPage {
   id: 'inventory' | 'users';
   categoryKey: CategoryKey;
   path: string;
-  specId?: string;
-  scenarios?: string[];
   notes?: string;
 }
 
@@ -20,15 +18,11 @@ const pages: ValidationPage[] = [
     id: 'inventory',
     categoryKey: 'productValidation',
     path: '/inventory',
-    specId: 'inventory',
-    scenarios: ['create_inventory_item', 'search_inventory_items', 'edit_inventory_item'],
   },
   {
     id: 'users',
     categoryKey: 'listingSearch',
     path: '/users',
-    specId: 'users',
-    scenarios: ['filter_by_name', 'filter_by_status', 'no_match'],
   },
 ];
 
@@ -46,22 +40,6 @@ const byCategory = computed<Record<CategoryKey, ValidationPage[]>>(() => {
 });
 
 const categoryKeys: CategoryKey[] = ['productValidation', 'listingSearch'];
-const workbenchRoot = 'http://localhost:5174/exploration/autonomous';
-
-function workbenchUrl(page: ValidationPage): string {
-  const params = new URLSearchParams();
-  params.set('url', `${window.location.origin}${page.path}`);
-
-  if (page.specId) {
-    params.set('spec_id', page.specId);
-  }
-
-  if (page.scenarios?.length) {
-    params.set('scenario', page.scenarios[0]);
-  }
-
-  return `${workbenchRoot}?${params.toString()}`;
-}
 
 function categoryAvailability(count: number) {
   return t('index.categoryAvailability', count, { named: { count } });
@@ -114,7 +92,6 @@ function categoryAvailability(count: number) {
                 <a-typography-title :level="3" class="card-title">
                   {{ t(`index.pages.${page.id}.name`) }}
                 </a-typography-title>
-                <a-tag v-if="page.specId" color="green">{{ t('index.spec') }}</a-tag>
               </a-space>
             </template>
 
@@ -122,54 +99,17 @@ function categoryAvailability(count: number) {
               {{ t(`index.pages.${page.id}.description`) }}
             </a-typography-paragraph>
 
-            <a-descriptions class="page-meta" size="small" :column="1" bordered>
-              <a-descriptions-item :label="t('index.route')">
-                <a-typography-text code>{{ page.path }}</a-typography-text>
-              </a-descriptions-item>
-              <a-descriptions-item v-if="page.specId" :label="t('index.specId')">
-                <a-typography-text code>{{ page.specId }}</a-typography-text>
-              </a-descriptions-item>
-              <a-descriptions-item v-if="page.scenarios?.length" :label="t('index.scenarios')">
-                <a-space wrap>
-                  <a-tag v-for="scenario in page.scenarios" :key="scenario" color="default">
-                    {{ scenario }}
-                  </a-tag>
-                </a-space>
-              </a-descriptions-item>
-              <a-descriptions-item v-if="page.notes" :label="t('index.notes')">
-                {{ page.notes }}
-              </a-descriptions-item>
-            </a-descriptions>
-
             <a-space class="actions" wrap>
               <router-link :to="page.path" custom v-slot="{ navigate }">
                 <a-button type="primary" @click="navigate">
                   {{ t(`index.pages.${page.id}.action`) }}
                 </a-button>
               </router-link>
-              <a-button
-                v-if="page.specId"
-                :href="workbenchUrl(page)"
-                target="_blank"
-                rel="noopener"
-              >
-                {{ t('index.workbench') }}
-              </a-button>
             </a-space>
           </a-card>
         </div>
       </a-card>
     </section>
-
-    <a-card class="workbench-card" :bordered="false">
-      <a-typography-title :level="2" class="section-title">
-        {{ t('index.workbenchTitle') }}
-      </a-typography-title>
-      <a-typography-paragraph class="subtitle">
-        {{ t('index.workbenchDescription') }}
-        <a-typography-text code>{{ workbenchRoot }}</a-typography-text>
-      </a-typography-paragraph>
-    </a-card>
   </main>
 </template>
 
@@ -207,16 +147,8 @@ function categoryAvailability(count: number) {
   color: var(--muted);
 }
 
-.page-meta {
-  margin-bottom: 18px;
-}
-
 .actions {
   margin-top: 4px;
-}
-
-.workbench-card {
-  margin-bottom: 18px;
 }
 
 @media (max-width: 720px) {

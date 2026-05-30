@@ -31,16 +31,9 @@ export default {
   },
   index: {
     title: '検証画面',
-    subtitle: 'WebAgentFlow のブラウザー検証で使う製品風ページの入口一覧です。',
+    subtitle: '検証サイト内で使う製品風ページの入口一覧です。',
     categoryAvailability: '{count} 件の利用可能な画面',
-    route: 'ルート',
-    specId: '仕様 ID',
-    scenarios: 'シナリオ',
     notes: 'メモ',
-    spec: '仕様',
-    workbench: 'ワークベンチ',
-    workbenchTitle: 'Workbench',
-    workbenchDescription: 'ディープリンクはページ URL、仕様 ID、最初のシナリオを事前入力します。',
     categories: {
       productValidation: '製品検証',
       listingSearch: '一覧と検索',

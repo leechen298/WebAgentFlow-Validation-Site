@@ -19,7 +19,14 @@ pnpm run eval:summary -- --status UNVERIFIED --command-id summary-only
 
 When a private black-box run has completed and its provider-owned gates are
 reviewed, the same script may emit `PASS`, `FAIL`, `BLOCKED`, or
-`PASS_WITH_CAVEATS`.
+`PASS_WITH_CAVEATS`. Non-`UNVERIFIED` statuses require private raw gate evidence
+at:
+
+```text
+evals/artifacts/raw/provider-gates.private.json
+```
+
+The raw gate file is provider-private and ignored by git.
 
 The redacted summary must contain only:
 
@@ -27,6 +34,7 @@ The redacted summary must contain only:
 - opaque `target.target_ref`
 - opaque `case_results[].case_id`
 - aggregate statuses
+- redacted gate names and statuses
 - `redacted: true` metadata
 
 It must not contain local ports, target paths, route names, selectors,

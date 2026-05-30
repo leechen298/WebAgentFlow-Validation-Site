@@ -31,16 +31,9 @@ export default {
   },
   index: {
     title: 'Validation Surfaces',
-    subtitle: 'Entry list for product-like pages used by WebAgentFlow browser validation runs.',
+    subtitle: 'Provider-local entry list for private product-like validation pages.',
     categoryAvailability: '{count} available surface | {count} available surfaces',
-    route: 'Route',
-    specId: 'Spec ID',
-    scenarios: 'Scenarios',
     notes: 'Notes',
-    spec: 'spec',
-    workbench: 'Workbench',
-    workbenchTitle: 'Workbench',
-    workbenchDescription: 'Deep links pre-fill the page URL, spec ID, and first scenario.',
     categories: {
       productValidation: 'Product Validation',
       listingSearch: 'Listing & Search',

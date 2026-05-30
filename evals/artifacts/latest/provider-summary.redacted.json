@@ -1,7 +1,7 @@
 {
   "schema_version": "waf.eval.result.v1",
   "status": "UNVERIFIED",
-  "generated_at": "2026-05-30T12:47:26.480Z",
+  "generated_at": "2026-05-30T12:52:25.338Z",
   "provider": {
     "kind": "external_target",
     "name": "WebAgentFlow-Validation-Site",
@@ -16,14 +16,20 @@
       "surface": "external_provider",
       "action": "write_redacted_provider_summary",
       "command": "summary-only",
-      "timestamp": "2026-05-30T12:47:26.481Z"
+      "timestamp": "2026-05-30T12:52:25.338Z"
     }
   ],
   "case_results": [
     {
       "case_id": "validation-provider-private-black-box",
       "status": "UNVERIFIED",
-      "summary": "Private provider-owned black-box validation result."
+      "summary": "Private provider-owned black-box validation result.",
+      "gates": [
+        {
+          "name": "private-gate-evidence",
+          "status": "UNVERIFIED"
+        }
+      ]
     }
   ],
   "artifacts": [

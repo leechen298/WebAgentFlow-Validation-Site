@@ -20,6 +20,7 @@ const allowedCommandIds = new Set([
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 const outputPath = resolve(here, 'artifacts/latest/provider-summary.redacted.json');
+const rawGatePath = resolve(here, 'artifacts/raw/provider-gates.private.json');
 
 function parseArgs(argv) {
   const args = {
@@ -64,7 +65,49 @@ function providerVersion() {
   }
 }
 
+function readRawGate(args) {
+  if (args.status === 'UNVERIFIED') {
+    return null;
+  }
+
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(rawGatePath, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `Refusing to emit ${args.status} without private gate evidence at ` +
+        `${rawGatePath}: ${error.message}`,
+    );
+  }
+
+  if (raw.status !== args.status) {
+    throw new Error(`Raw gate status ${raw.status} does not match requested ${args.status}`);
+  }
+  if (raw.command_id !== args.commandId) {
+    throw new Error(`Raw gate command_id ${raw.command_id} does not match requested ${args.commandId}`);
+  }
+  if (!Array.isArray(raw.gates) || raw.gates.length === 0) {
+    throw new Error('Raw gate evidence must include at least one gate.');
+  }
+
+  for (const gate of raw.gates) {
+    if (!gate || typeof gate.name !== 'string' || !allowedStatuses.has(gate.status)) {
+      throw new Error('Raw gate evidence contains an invalid gate.');
+    }
+  }
+
+  return raw;
+}
+
 function buildSummary(args) {
+  const rawGate = readRawGate(args);
+  const gates = rawGate?.gates ?? [
+    {
+      name: 'private-gate-evidence',
+      status: 'UNVERIFIED',
+    },
+  ];
+
   return {
     schema_version: 'waf.eval.result.v1',
     status: args.status,
@@ -91,6 +134,10 @@ function buildSummary(args) {
         case_id: 'validation-provider-private-black-box',
         status: args.status,
         summary: 'Private provider-owned black-box validation result.',
+        gates: gates.map((gate) => ({
+          name: gate.name,
+          status: gate.status,
+        })),
       },
     ],
     artifacts: [
