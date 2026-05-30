@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import { DownloadOutlined } from '@ant-design/icons-vue';
+import dayjs, { type Dayjs } from 'dayjs';
+import { currentLocale } from '../i18n';
+import {
+  displayDepartment,
+  displayRegion,
+  displayUserName,
+  matchesLocalizedUserName,
+  rawUserNameForExactDisplay,
+} from '../i18n/business';
 
 type UserRole = 'admin' | 'user' | 'guest';
 type UserStatus = 'active' | 'disabled';
@@ -16,6 +27,19 @@ interface User {
   department: string;
   last_login_at: string;
 }
+
+interface DisplayUser extends User {
+  displayName: string;
+  displayRole: string;
+  displayStatus: string;
+  displayRegion: string;
+  displayDepartment: string;
+}
+
+type UserExportColumn = {
+  title: string;
+  getValue: (user: DisplayUser) => string | number;
+};
 
 interface RegionOption {
   value: string;
@@ -46,6 +70,16 @@ interface RegionChoice {
   label: string;
 }
 
+type NoticeState =
+  | {
+      message: string;
+    }
+  | {
+      messageKey: string;
+      params?: Record<string, number | string>;
+    };
+
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 
@@ -56,7 +90,7 @@ const roleOptions = ref<UserRole[]>([]);
 const departmentOptions = ref<string[]>([]);
 const regionOptions = ref<RegionOption[]>([]);
 const isLoading = ref(false);
-const notice = ref('Loading user directory.');
+const noticeState = ref<NoticeState>({ messageKey: 'users.notice.loading' });
 
 const form = reactive({
   name: '',
@@ -70,15 +104,95 @@ const form = reactive({
   departments: [] as string[],
 });
 
+const activeCount = computed(() => rows.value.filter((user) => user.status === 'active').length);
+const disabledCount = computed(() => rows.value.filter((user) => user.status === 'disabled').length);
+const displayRows = computed(() => rows.value.map(displayUser));
+const displayDetail = computed(() => (detail.value ? displayUser(detail.value) : null));
+const notice = computed(() =>
+  'message' in noticeState.value
+    ? noticeState.value.message
+    : t(noticeState.value.messageKey, noticeState.value.params ?? {}),
+);
+
 const countLabel = computed(() => {
   if (isLoading.value) {
-    return 'Loading users';
+    return t('users.countLoading');
   }
 
-  return total.value === 1 ? '1 user' : `${total.value} users`;
+  return t('users.countUsers', total.value, { named: { count: total.value } });
 });
 
+const registeredFromValue = computed<Dayjs | null>({
+  get: () => (form.registeredFrom ? dayjs(form.registeredFrom) : null),
+  set: (value) => {
+    form.registeredFrom = value?.format('YYYY-MM-DD') ?? '';
+  },
+});
+
+const registeredToValue = computed<Dayjs | null>({
+  get: () => (form.registeredTo ? dayjs(form.registeredTo) : null),
+  set: (value) => {
+    form.registeredTo = value?.format('YYYY-MM-DD') ?? '';
+  },
+});
+
+const monthValue = computed<Dayjs | null>({
+  get: () => (form.month ? dayjs(`${form.month}-01`) : null),
+  set: (value) => {
+    form.month = value?.format('YYYY-MM') ?? '';
+  },
+});
+
+const roleSelectOptions = computed(() => [
+  { label: t('users.placeholders.anyRole'), value: '' },
+  ...roleOptions.value.map((role) => ({
+    label: t(`roles.${role}`),
+    value: role,
+  })),
+]);
+
 const regionChoices = computed<RegionChoice[]>(() => flattenRegionOptions(regionOptions.value));
+const regionSelectOptions = computed(() => [
+  { label: t('users.placeholders.anyRegion'), value: '' },
+  ...regionChoices.value,
+]);
+
+const departmentSelectOptions = computed(() =>
+  departmentOptions.value.map((department) => ({
+    label: displayDepartment(department, currentLocale.value),
+    value: department,
+  })),
+);
+
+const statusRadioOptions = computed(() => [
+  { label: t('users.statusOptions.all'), value: '' },
+  { label: t('users.statusOptions.active'), value: 'active' },
+  { label: t('users.statusOptions.disabled'), value: 'disabled' },
+]);
+
+const tableColumns = computed(() => [
+  { title: t('users.fields.id'), dataIndex: 'id', key: 'id', width: 72 },
+  { title: t('users.fields.name'), dataIndex: 'displayName', key: 'name' },
+  { title: t('users.fields.email'), dataIndex: 'email', key: 'email' },
+  { title: t('users.fields.role'), dataIndex: 'displayRole', key: 'role' },
+  { title: t('users.fields.status'), dataIndex: 'displayStatus', key: 'status' },
+  { title: t('users.fields.registered'), dataIndex: 'registered_at', key: 'registered_at' },
+  { title: t('users.fields.region'), dataIndex: 'displayRegion', key: 'region' },
+  { title: t('users.fields.department'), dataIndex: 'displayDepartment', key: 'department' },
+  { title: t('common.actions'), key: 'actions', width: 120 },
+]);
+
+const userExportColumns = computed<UserExportColumn[]>(() => [
+  { title: t('users.fields.id'), getValue: (user) => user.id },
+  { title: t('users.fields.name'), getValue: (user) => user.displayName },
+  { title: t('users.fields.email'), getValue: (user) => user.email },
+  { title: t('users.fields.role'), getValue: (user) => user.displayRole },
+  { title: t('users.fields.status'), getValue: (user) => user.displayStatus },
+  { title: t('users.fields.registered'), getValue: (user) => user.registered_at },
+  { title: t('users.fields.region'), getValue: (user) => user.displayRegion },
+  { title: t('users.fields.department'), getValue: (user) => user.displayDepartment },
+  { title: t('users.fields.lastLogin'), getValue: (user) => user.last_login_at },
+]);
 
 onMounted(async () => {
   restoreFormFromRoute();
@@ -93,7 +207,7 @@ async function loadOptions() {
     departmentOptions.value = payload.data.departments;
     regionOptions.value = payload.data.regions;
   } catch (error) {
-    notice.value = error instanceof Error ? error.message : 'Unable to load user options.';
+    setErrorNotice(error, 'users.notice.optionsError');
   }
 }
 
@@ -101,16 +215,16 @@ async function fetchUsers() {
   isLoading.value = true;
 
   try {
-    const payload = await requestJson<UserListData>(withQuery('/api/users', buildParams()));
-    rows.value = payload.data.items;
-    total.value = payload.data.total;
-    notice.value = rows.value.length
-      ? 'User directory loaded.'
-      : 'No users matched the current filters.';
+    const payload = await requestJson<UserListData>(withQuery('/api/users', buildApiParams()));
+    rows.value = payload.data.items.filter((user) =>
+      matchesUserSearch(user, form.name, currentLocale.value),
+    );
+    total.value = rows.value.length;
+    setNotice(rows.value.length ? 'users.notice.loaded' : 'users.noMatchNotice');
   } catch (error) {
     rows.value = [];
     total.value = 0;
-    notice.value = error instanceof Error ? error.message : 'Unable to load users.';
+    setErrorNotice(error, 'users.notice.loadError');
   } finally {
     isLoading.value = false;
   }
@@ -137,23 +251,76 @@ function onReset() {
   void fetchUsers();
 }
 
-function toggleDepartment(department: string) {
-  const index = form.departments.indexOf(department);
-
-  if (index >= 0) {
-    form.departments.splice(index, 1);
-  } else {
-    form.departments.push(department);
-  }
-}
-
 async function viewUser(user: User) {
   try {
     const payload = await requestJson<User>(`/api/users/${user.id}`);
     detail.value = payload.data;
   } catch {
     detail.value = user;
+    setNotice('users.detailFallback');
   }
+}
+
+function displayUser(user: User): DisplayUser {
+  return {
+    ...user,
+    displayName: displayUserName(user.name, currentLocale.value),
+    displayRole: t(`roles.${user.role}`),
+    displayStatus: t(`statuses.${user.status}`),
+    displayRegion: displayRegion(user.region, currentLocale.value),
+    displayDepartment: displayDepartment(user.department, currentLocale.value),
+  };
+}
+
+function downloadCurrentUsers() {
+  const workbook = buildUsersExcelWorkbook(displayRows.value, userExportColumns.value);
+  const blob = new Blob([workbook], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = 'users-export.xls';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildUsersExcelWorkbook(users: DisplayUser[], columns: UserExportColumn[]): string {
+  const headerCells = columns.map((column) => `<th>${escapeHtml(column.title)}</th>`).join('');
+  const bodyRows = users
+    .map((user) => {
+      const cells = columns
+        .map((column) => `<td>${escapeHtml(String(column.getValue(user)))}</td>`)
+        .join('');
+
+      return `<tr>${cells}</tr>`;
+    })
+    .join('');
+
+  return [
+    '<!doctype html>',
+    '<html>',
+    '<head>',
+    '<meta charset="utf-8" />',
+    '</head>',
+    '<body>',
+    '<table>',
+    `<thead><tr>${headerCells}</tr></thead>`,
+    `<tbody>${bodyRows}</tbody>`,
+    '</table>',
+    '</body>',
+    '</html>',
+  ].join('');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function buildParams(): Record<string, string> {
@@ -170,6 +337,26 @@ function buildParams(): Record<string, string> {
   if (form.departments.length) params.department = form.departments.join(',');
 
   return params;
+}
+
+function buildApiParams(): Record<string, string> {
+  const params = buildParams();
+
+  if (params.name) {
+    params.name = rawUserNameForExactDisplay(params.name, currentLocale.value);
+  }
+
+  return params;
+}
+
+function matchesUserSearch(user: User, query: string, locale = currentLocale.value): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return matchesLocalizedUserName(user.name, normalizedQuery, locale);
 }
 
 function syncUrl() {
@@ -202,9 +389,10 @@ function withQuery(path: string, params: Record<string, string>) {
 function flattenRegionOptions(options: RegionOption[], prefix: string[] = []): RegionChoice[] {
   return options.flatMap((option) => {
     const nextPrefix = [...prefix, option.value];
+    const rawValue = nextPrefix.join('/');
     const self = {
-      value: nextPrefix.join('/'),
-      label: nextPrefix.join(' / '),
+      value: rawValue,
+      label: displayRegion(rawValue, currentLocale.value),
     };
 
     if (!option.children?.length) {
@@ -213,6 +401,23 @@ function flattenRegionOptions(options: RegionOption[], prefix: string[] = []): R
 
     return [self, ...flattenRegionOptions(option.children, nextPrefix)];
   });
+}
+
+function statusColor(status: UserStatus): string {
+  return status === 'active' ? 'success' : 'error';
+}
+
+function setNotice(messageKey: string, params?: Record<string, number | string>) {
+  noticeState.value = { messageKey, params };
+}
+
+function setErrorNotice(error: unknown, fallbackKey: string) {
+  if (error instanceof Error) {
+    noticeState.value = { message: error.message };
+    return;
+  }
+
+  setNotice(fallbackKey);
 }
 
 async function requestJson<T>(input: string): Promise<ApiEnvelope<T>> {
@@ -228,355 +433,251 @@ async function requestJson<T>(input: string): Promise<ApiEnvelope<T>> {
 </script>
 
 <template>
-  <main class="users-page">
+  <main class="users-page page-shell" :data-locale="currentLocale">
     <header class="page-header" aria-labelledby="users-title">
       <div>
-        <p class="eyebrow">WebAgentFlow Validation Site</p>
-        <h1 id="users-title">User Directory</h1>
-        <p class="subtitle">
-          Fixture-style list page for search, filters, row actions, and detail loading.
-        </p>
+        <p class="eyebrow">{{ t('app.brand') }}</p>
+        <h1 id="users-title" class="page-title">{{ t('users.title') }}</h1>
+        <p class="subtitle">{{ t('users.subtitle') }}</p>
       </div>
 
-      <div class="summary-grid" aria-label="User summary">
-        <div>
-          <span class="summary-value">{{ total }}</span>
-          <span class="summary-label">Users</span>
-        </div>
-        <div>
-          <span class="summary-value">{{ rows.filter((user) => user.status === 'active').length }}</span>
-          <span class="summary-label">Active</span>
-        </div>
-        <div>
-          <span class="summary-value">{{ rows.filter((user) => user.status === 'disabled').length }}</span>
-          <span class="summary-label">Disabled</span>
-        </div>
+      <div class="summary-grid" :aria-label="t('users.summaryLabel')">
+        <a-card size="small">
+          <a-statistic :title="t('users.fields.name')" :value="total" />
+        </a-card>
+        <a-card size="small">
+          <a-statistic :title="t('statuses.active')" :value="activeCount" />
+        </a-card>
+        <a-card size="small">
+          <a-statistic :title="t('statuses.disabled')" :value="disabledCount" />
+        </a-card>
       </div>
     </header>
 
-    <p class="status-message" role="status" aria-live="polite">{{ notice }}</p>
+    <a-alert class="surface-section" type="info" show-icon :message="notice" role="status" />
 
-    <section class="search-panel" aria-labelledby="user-search-heading">
-      <div class="section-heading">
-        <div>
-          <h2 id="user-search-heading">Search users</h2>
-          <p>{{ countLabel }}</p>
-        </div>
-      </div>
+    <a-card class="surface-section" :title="t('users.searchTitle')">
+      <template #extra>
+        <span class="count-label">{{ countLabel }}</span>
+      </template>
 
-      <form id="user-search-form" class="user-search-form" @submit.prevent="onSearch">
-        <div class="field">
-          <label for="search-name">Name</label>
-          <input id="search-name" v-model="form.name" placeholder="alice" autocomplete="off" />
-        </div>
+      <a-form id="user-search-form" :model="form" layout="vertical" @finish="onSearch">
+        <div class="user-search-grid">
+          <a-form-item :label="t('users.fields.name')">
+            <a-input id="search-name" v-model:value="form.name" placeholder="alice" autocomplete="off" />
+          </a-form-item>
 
-        <div class="field">
-          <label for="search-email">Email</label>
-          <input id="search-email" v-model="form.email" placeholder="alice@example.com" autocomplete="off" />
-        </div>
+          <a-form-item :label="t('users.fields.email')">
+            <a-input
+              id="search-email"
+              v-model:value="form.email"
+              placeholder="alice@example.com"
+              autocomplete="off"
+            />
+          </a-form-item>
 
-        <div class="field">
-          <label for="search-role">Role</label>
-          <select id="search-role" v-model="form.role">
-            <option value="">Any role</option>
-            <option v-for="role in roleOptions" :key="role" :value="role">{{ role }}</option>
-          </select>
-        </div>
+          <a-form-item :label="t('users.fields.role')">
+            <a-select id="search-role" v-model:value="form.role" :options="roleSelectOptions" />
+          </a-form-item>
 
-        <div class="field">
-          <span class="field-label">Status</span>
-          <fieldset id="search-status" class="radio-group">
-            <label><input v-model="form.status" type="radio" value="" /> All</label>
-            <label><input v-model="form.status" type="radio" value="active" /> Active</label>
-            <label><input v-model="form.status" type="radio" value="disabled" /> Disabled</label>
-          </fieldset>
-        </div>
+          <a-form-item :label="t('users.fields.status')">
+            <a-radio-group
+              id="search-status"
+              v-model:value="form.status"
+              :options="statusRadioOptions"
+              option-type="button"
+            />
+          </a-form-item>
 
-        <div class="field">
-          <label for="search-registered-from">Registered from</label>
-          <input id="search-registered-from" v-model="form.registeredFrom" type="date" />
-        </div>
+          <a-form-item :label="t('users.fields.registeredFrom')">
+            <a-date-picker
+              id="search-registered-from"
+              v-model:value="registeredFromValue"
+              class="full-width"
+            />
+          </a-form-item>
 
-        <div class="field">
-          <label for="search-registered-to">Registered to</label>
-          <input id="search-registered-to" v-model="form.registeredTo" type="date" />
-        </div>
+          <a-form-item :label="t('users.fields.registeredTo')">
+            <a-date-picker
+              id="search-registered-to"
+              v-model:value="registeredToValue"
+              class="full-width"
+            />
+          </a-form-item>
 
-        <div class="field">
-          <label for="search-region">Region</label>
-          <select id="search-region" v-model="form.regionPrefix">
-            <option value="">Any region</option>
-            <option v-for="region in regionChoices" :key="region.value" :value="region.value">
-              {{ region.label }}
-            </option>
-          </select>
-        </div>
+          <a-form-item :label="t('users.fields.region')">
+            <a-select
+              id="search-region"
+              v-model:value="form.regionPrefix"
+              show-search
+              :options="regionSelectOptions"
+            />
+          </a-form-item>
 
-        <div class="field">
-          <label for="search-month">Month</label>
-          <input id="search-month" v-model="form.month" type="month" />
-        </div>
+          <a-form-item :label="t('users.fields.month')">
+            <a-date-picker
+              id="search-month"
+              v-model:value="monthValue"
+              class="full-width"
+              picker="month"
+            />
+          </a-form-item>
 
-        <div class="department-field">
-          <span class="field-label">Department</span>
-          <div class="tag-row">
-            <button
-              v-for="department in departmentOptions"
-              :key="department"
-              type="button"
-              class="tag-filter"
-              :class="{ selected: form.departments.includes(department) }"
-              :aria-pressed="form.departments.includes(department)"
-              @click="toggleDepartment(department)"
-            >
-              {{ department }}
-            </button>
-          </div>
+          <a-form-item class="department-field" :label="t('users.fields.department')">
+            <a-select
+              v-model:value="form.departments"
+              mode="multiple"
+              :options="departmentSelectOptions"
+            />
+          </a-form-item>
         </div>
 
         <div class="form-actions">
-          <button id="btn-reset" type="button" class="secondary-button" @click="onReset">Reset</button>
-          <button id="btn-search" type="submit" class="primary-button compact-button" :disabled="isLoading">
-            Search
-          </button>
+          <a-button id="btn-reset" @click="onReset">{{ t('common.reset') }}</a-button>
+          <a-button id="btn-search" type="primary" html-type="submit" :loading="isLoading">
+            {{ t('common.search') }}
+          </a-button>
         </div>
-      </form>
-    </section>
+      </a-form>
+    </a-card>
 
-    <section class="user-results" aria-labelledby="user-results-heading">
-      <div class="section-heading">
-        <div>
-          <h2 id="user-results-heading">Results</h2>
-          <p>{{ rows.length }} visible records</p>
+    <a-card class="surface-section">
+      <template #title>
+        <div class="section-title-row">
+          <div>
+            <h2 class="section-heading">{{ t('users.resultsTitle') }}</h2>
+            <p>{{ t('users.visibleRecords', { count: rows.length }) }}</p>
+          </div>
+          <a-button
+            id="btn-export-users"
+            :disabled="isLoading || !rows.length"
+            @click="downloadCurrentUsers"
+          >
+            <template #icon>
+              <DownloadOutlined />
+            </template>
+            {{ t('users.actions.downloadExcel') }}
+          </a-button>
         </div>
-      </div>
+      </template>
 
-      <div v-if="isLoading && !rows.length" class="empty-state">
-        <h3>Loading users</h3>
-      </div>
+      <a-spin :spinning="isLoading && !rows.length" :tip="t('users.empty.loading')">
+        <a-table
+          v-if="rows.length"
+          :columns="tableColumns"
+          :data-source="displayRows"
+          :loading="isLoading"
+          row-key="id"
+          :pagination="{ pageSize: 8, showSizeChanger: false }"
+          :scroll="{ x: 1120 }"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'status'">
+              <a-tag :color="statusColor(record.status)">
+                {{ record.displayStatus }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.key === 'actions'">
+              <a-button
+                class="btn-view-row"
+                type="link"
+                :data-user-id="record.id"
+                @click="viewUser(record)"
+              >
+                {{ t('common.view') }}
+              </a-button>
+            </template>
+          </template>
+        </a-table>
 
-      <div v-else-if="rows.length" class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">ID</th>
-              <th scope="col">Name</th>
-              <th scope="col">Email</th>
-              <th scope="col">Role</th>
-              <th scope="col">Status</th>
-              <th scope="col">Registered</th>
-              <th scope="col">Department</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in rows" :key="user.id">
-              <td>{{ user.id }}</td>
-              <td>{{ user.name }}</td>
-              <td>{{ user.email }}</td>
-              <td>{{ user.role }}</td>
-              <td>
-                <span class="status-pill" :class="`user-status-${user.status}`">
-                  {{ user.status }}
-                </span>
-              </td>
-              <td>{{ user.registered_at }}</td>
-              <td>{{ user.department }}</td>
-              <td>
-                <button
-                  type="button"
-                  class="text-button btn-view-row"
-                  :data-user-id="user.id"
-                  @click="viewUser(user)"
-                >
-                  View
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <a-empty v-else :description="isLoading ? t('users.empty.loading') : t('users.empty.noUsers')" />
+      </a-spin>
+    </a-card>
 
-      <div v-else class="empty-state">
-        <h3>No users found</h3>
-      </div>
-    </section>
+    <a-card
+      v-if="displayDetail"
+      class="surface-section user-detail"
+      data-testid="user-detail"
+      :title="displayDetail.displayName"
+    >
+      <template #extra>
+        <a-button @click="detail = null">{{ t('common.close') }}</a-button>
+      </template>
 
-    <section v-if="detail" class="user-detail" data-testid="user-detail" aria-labelledby="user-detail-heading">
-      <div class="section-heading">
-        <div>
-          <h2 id="user-detail-heading">{{ detail.name }}</h2>
-          <p>{{ detail.email }}</p>
-        </div>
-        <button type="button" class="secondary-button" @click="detail = null">Close</button>
-      </div>
-
-      <dl class="detail-grid">
-        <div><dt>Role</dt><dd>{{ detail.role }}</dd></div>
-        <div><dt>Status</dt><dd>{{ detail.status }}</dd></div>
-        <div><dt>Department</dt><dd>{{ detail.department }}</dd></div>
-        <div><dt>Region</dt><dd>{{ detail.region }}</dd></div>
-        <div><dt>Registered</dt><dd>{{ detail.registered_at }}</dd></div>
-        <div><dt>Last login</dt><dd>{{ detail.last_login_at }}</dd></div>
-      </dl>
-    </section>
+      <p class="detail-email">{{ displayDetail.email }}</p>
+      <a-descriptions bordered :column="{ xs: 1, sm: 2, lg: 3 }">
+        <a-descriptions-item :label="t('users.fields.role')">
+          {{ displayDetail.displayRole }}
+        </a-descriptions-item>
+        <a-descriptions-item :label="t('users.fields.status')">
+          <a-tag :color="statusColor(displayDetail.status)">{{ displayDetail.displayStatus }}</a-tag>
+        </a-descriptions-item>
+        <a-descriptions-item :label="t('users.fields.department')">
+          {{ displayDetail.displayDepartment }}
+        </a-descriptions-item>
+        <a-descriptions-item :label="t('users.fields.region')">
+          {{ displayDetail.displayRegion }}
+        </a-descriptions-item>
+        <a-descriptions-item :label="t('users.fields.registered')">
+          {{ displayDetail.registered_at }}
+        </a-descriptions-item>
+        <a-descriptions-item :label="t('users.fields.lastLogin')">
+          {{ displayDetail.last_login_at }}
+        </a-descriptions-item>
+      </a-descriptions>
+    </a-card>
   </main>
 </template>
 
 <style scoped>
 .users-page {
-  width: min(1280px, 100%);
-  margin: 0 auto;
-  padding: 32px;
+  --page-max: 1280px;
 }
 
-.search-panel,
-.user-results,
-.user-detail {
-  margin-bottom: 18px;
-  overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
+.count-label,
+.detail-email {
+  color: var(--muted);
 }
 
-.user-search-form {
+.user-search-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
-  padding: 18px;
-}
-
-.field,
-.department-field {
-  display: grid;
-  gap: 8px;
 }
 
 .department-field {
   grid-column: 1 / -1;
 }
 
-.field-label {
-  color: #26352d;
-  font-weight: 700;
-}
-
-.radio-group {
-  display: flex;
-  min-height: 42px;
-  align-items: center;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.radio-group label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #26352d;
-  font-weight: 700;
-}
-
-.radio-group input {
-  width: auto;
-  min-height: 0;
-}
-
-.tag-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.tag-filter {
-  min-height: 34px;
-  padding: 0 12px;
-  color: #42514a;
-  background: #edf3ef;
-  border: 1px solid #d5ddd2;
-  border-radius: 999px;
-  font-weight: 800;
-}
-
-.tag-filter.selected {
-  color: #ffffff;
-  background: var(--accent);
-  border-color: var(--accent);
+.full-width {
+  width: 100%;
 }
 
 .form-actions {
-  grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
 }
 
-.compact-button {
-  width: auto;
-  min-width: 120px;
-}
-
-.user-status-active {
-  color: #145340;
-  background: var(--success-bg);
-}
-
-.user-status-disabled {
-  color: #7a1e1e;
-  background: #ffe2e2;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 0;
-  padding: 18px;
-}
-
-.detail-grid div {
-  min-width: 0;
-}
-
-.detail-grid dt {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.detail-grid dd {
-  margin: 4px 0 0;
-  overflow-wrap: anywhere;
+.section-heading {
+  margin-bottom: 4px;
+  font-size: 1.2rem;
 }
 
 @media (max-width: 980px) {
-  .user-search-form,
-  .detail-grid {
+  .user-search-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 720px) {
-  .users-page {
-    padding: 18px;
-  }
-
-  .user-search-form,
-  .detail-grid {
+  .user-search-grid {
     grid-template-columns: 1fr;
   }
 
   .form-actions {
-    justify-content: stretch;
-  }
-
-  .form-actions > * {
-    flex: 1 1 0;
+    display: grid;
+    grid-template-columns: 1fr;
   }
 }
 </style>

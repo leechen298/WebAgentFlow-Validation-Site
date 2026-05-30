@@ -1,6 +1,62 @@
 import { createServer } from 'node:http';
 
 const VALID_STATUSES = new Set(['active', 'paused']);
+const SUPPORTED_CSV_LOCALES = new Set(['zh-CN', 'en-US', 'ja-JP']);
+
+const csvHeadersByLocale = {
+  'zh-CN': ['SKU', '名称', '分类', '库存', '状态', '更新时间'],
+  'en-US': ['SKU', 'Name', 'Category', 'Stock', 'Status', 'Updated'],
+  'ja-JP': ['SKU', '名前', 'カテゴリー', '在庫', 'ステータス', '更新日時'],
+};
+
+const inventoryNameLabels = {
+  'Alpine Notebook': {
+    'zh-CN': '高山笔记本',
+    'en-US': 'Alpine Notebook',
+    'ja-JP': 'アルパインノート',
+  },
+  'Skyline Mug': {
+    'zh-CN': '天际线马克杯',
+    'en-US': 'Skyline Mug',
+    'ja-JP': 'スカイラインマグ',
+  },
+  'Oak Desk Lamp': {
+    'zh-CN': '橡木台灯',
+    'en-US': 'Oak Desk Lamp',
+    'ja-JP': 'オークデスクランプ',
+  },
+};
+
+const inventoryCategoryLabels = {
+  Stationery: {
+    'zh-CN': '文具',
+    'en-US': 'Stationery',
+    'ja-JP': '文具',
+  },
+  Office: {
+    'zh-CN': '办公用品',
+    'en-US': 'Office',
+    'ja-JP': 'オフィス用品',
+  },
+  Workspace: {
+    'zh-CN': '办公空间',
+    'en-US': 'Workspace',
+    'ja-JP': 'ワークスペース',
+  },
+};
+
+const statusLabels = {
+  active: {
+    'zh-CN': '启用',
+    'en-US': 'active',
+    'ja-JP': '有効',
+  },
+  paused: {
+    'zh-CN': '暂停',
+    'en-US': 'paused',
+    'ja-JP': '一時停止',
+  },
+};
 
 const seedItems = [
   {
@@ -102,8 +158,9 @@ export function createInventoryServer() {
 
       if (request.method === 'GET' && url.pathname === '/api/inventory/export.csv') {
         const query = url.searchParams.get('query') ?? '';
-        const rows = filterItems(items, query);
-        sendCsv(response, rows);
+        const locale = normalizeCsvLocale(url.searchParams.get('locale'));
+        const rows = filterItems(items, query, locale);
+        sendCsv(response, rows, locale);
         return;
       }
 
@@ -173,15 +230,16 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
-function sendCsv(response, rows) {
+function sendCsv(response, rows, locale) {
+  const headers = locale ? csvHeadersByLocale[locale] : csvHeadersByLocale['en-US'];
   const csv = [
-    ['SKU', 'Name', 'Category', 'Stock', 'Status', 'Updated'],
+    headers,
     ...rows.map((item) => [
       item.sku,
-      item.name,
-      item.category,
+      displayInventoryName(item.name, locale),
+      displayInventoryCategory(item.category, locale),
       String(item.stock),
-      item.status,
+      displayStatus(item.status, locale),
       item.updatedAt,
     ]),
   ]
@@ -274,7 +332,7 @@ function statusField(payload) {
   return status;
 }
 
-function filterItems(items, query) {
+function filterItems(items, query, locale) {
   const normalizedQuery = query.trim().toLowerCase();
 
   if (!normalizedQuery) {
@@ -282,10 +340,32 @@ function filterItems(items, query) {
   }
 
   return items.filter((item) =>
-    [item.sku, item.name, item.category].some((value) =>
+    [
+      item.sku,
+      item.name,
+      item.category,
+      displayInventoryName(item.name, locale),
+      displayInventoryCategory(item.category, locale),
+    ].some((value) =>
       value.toLowerCase().includes(normalizedQuery),
     ),
   );
+}
+
+function normalizeCsvLocale(locale) {
+  return SUPPORTED_CSV_LOCALES.has(locale) ? locale : null;
+}
+
+function displayInventoryName(value, locale) {
+  return locale ? inventoryNameLabels[value]?.[locale] ?? value : value;
+}
+
+function displayInventoryCategory(value, locale) {
+  return locale ? inventoryCategoryLabels[value]?.[locale] ?? value : value;
+}
+
+function displayStatus(value, locale) {
+  return locale ? statusLabels[value]?.[locale] ?? value : value;
 }
 
 function isUsersListPath(pathname) {

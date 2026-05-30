@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { currentLocale } from '../i18n';
+import { displayInventoryCategory, displayInventoryName } from '../i18n/business';
 import type { InventoryItem, InventoryStatus } from '../types/inventory';
 
 type InventoryDialogMode = 'create' | 'edit' | null;
@@ -26,12 +29,29 @@ type InventoryItemData = {
   item: InventoryItem;
 };
 
+type DisplayInventoryItem = InventoryItem & {
+  displayName: string;
+  displayCategory: string;
+  displayStatus: string;
+};
+
+type NoticeState =
+  | {
+      message: string;
+    }
+  | {
+      messageKey: string;
+      params?: Record<string, number | string>;
+    };
+
+const { t } = useI18n();
+
 const items = ref<InventoryItem[]>([]);
 const query = ref('');
 const selectedItemId = ref<string | null>(null);
-const notice = ref('Loading inventory records from the backend.');
+const noticeState = ref<NoticeState>({ messageKey: 'inventory.notice.loading' });
 const isLoading = ref(false);
-const dialogRef = ref<HTMLDialogElement | null>(null);
+const isDialogOpen = ref(false);
 const dialogMode = ref<InventoryDialogMode>(null);
 
 const form = reactive<InventoryForm>(blankForm());
@@ -40,7 +60,21 @@ const activeCount = computed(() => items.value.filter((item) => item.status === 
 const pausedCount = computed(() => items.value.length - activeCount.value);
 const totalStock = computed(() => items.value.reduce((total, item) => total + item.stock, 0));
 const isEditMode = computed(() => dialogMode.value === 'edit');
-const dialogTitle = computed(() => (isEditMode.value ? 'Edit inventory item' : 'New inventory item'));
+const dialogTitle = computed(() =>
+  isEditMode.value ? t('inventory.dialog.editTitle') : t('inventory.dialog.createTitle'),
+);
+const dialogDescription = computed(() => {
+  if (isEditMode.value && selectedItem.value) {
+    return t('inventory.dialog.editDescription', { sku: selectedItem.value.sku });
+  }
+
+  return t('inventory.dialog.createDescription');
+});
+const notice = computed(() =>
+  'message' in noticeState.value
+    ? noticeState.value.message
+    : t(noticeState.value.messageKey, noticeState.value.params ?? {}),
+);
 
 const selectedItem = computed(() =>
   items.value.find((item) => item.id === selectedItemId.value) ?? null,
@@ -53,23 +87,36 @@ const filteredItems = computed(() => {
     return items.value;
   }
 
-  return items.value.filter((item) => {
-    return [item.sku, item.name, item.category].some((value) =>
-      value.toLowerCase().includes(normalizedQuery),
-    );
-  });
+  return items.value.filter((item) =>
+    inventorySearchValues(item).some((value) => value.toLowerCase().includes(normalizedQuery)),
+  );
 });
 
 const downloadHref = computed(() => {
+  const params = new URLSearchParams({ locale: currentLocale.value });
   const normalizedQuery = query.value.trim();
 
-  if (!normalizedQuery) {
-    return '/api/inventory/export.csv';
+  if (normalizedQuery) {
+    params.set('query', normalizedQuery);
   }
 
-  const params = new URLSearchParams({ query: normalizedQuery });
   return `/api/inventory/export.csv?${params.toString()}`;
 });
+
+const tableColumns = computed(() => [
+  { title: t('inventory.table.sku'), dataIndex: 'sku', key: 'sku' },
+  { title: t('inventory.table.name'), dataIndex: 'displayName', key: 'name' },
+  { title: t('inventory.table.category'), dataIndex: 'displayCategory', key: 'category' },
+  { title: t('inventory.table.stock'), dataIndex: 'stock', key: 'stock' },
+  { title: t('inventory.table.status'), dataIndex: 'displayStatus', key: 'status' },
+  { title: t('inventory.table.updated'), dataIndex: 'updatedAt', key: 'updatedAt' },
+  { title: t('inventory.table.action'), key: 'action', width: 120 },
+]);
+
+const statusOptions = computed(() => [
+  { label: t('statuses.active'), value: 'active' },
+  { label: t('statuses.paused'), value: 'paused' },
+]);
 
 onMounted(() => {
   void loadInventoryItems();
@@ -81,9 +128,9 @@ async function loadInventoryItems() {
   try {
     const payload = await requestJson<InventoryListData>('/api/inventory');
     items.value = payload.data.items;
-    notice.value = 'Ready to manage inventory records.';
+    setNotice('inventory.notice.ready');
   } catch (error) {
-    notice.value = error instanceof Error ? error.message : 'Unable to load inventory records.';
+    setErrorNotice(error, 'inventory.notice.loadError');
   } finally {
     isLoading.value = false;
   }
@@ -93,7 +140,7 @@ async function openCreateDialog() {
   selectedItemId.value = null;
   Object.assign(form, blankForm());
   dialogMode.value = 'create';
-  await showDialog();
+  isDialogOpen.value = true;
 }
 
 async function openEditDialog(item: InventoryItem) {
@@ -106,22 +153,11 @@ async function openEditDialog(item: InventoryItem) {
     status: item.status,
   });
   dialogMode.value = 'edit';
-  await showDialog();
-}
-
-async function showDialog() {
-  await nextTick();
-
-  if (dialogRef.value && !dialogRef.value.open) {
-    dialogRef.value.showModal();
-  }
+  isDialogOpen.value = true;
 }
 
 function closeDialog() {
-  if (dialogRef.value?.open) {
-    dialogRef.value.close();
-  }
-
+  isDialogOpen.value = false;
   dialogMode.value = null;
 }
 
@@ -153,10 +189,12 @@ async function createInventoryItem() {
     const nextItem = response.data.item;
 
     items.value = [nextItem, ...items.value];
-    notice.value = `Created inventory item ${nextItem.name}.`;
+    setNotice('inventory.notice.created', {
+      name: displayInventoryName(nextItem.name, currentLocale.value),
+    });
     closeDialog();
   } catch (error) {
-    notice.value = error instanceof Error ? error.message : 'Unable to create inventory item.';
+    setErrorNotice(error, 'inventory.notice.createError');
   } finally {
     isLoading.value = false;
   }
@@ -164,7 +202,7 @@ async function createInventoryItem() {
 
 async function saveInventoryItem() {
   if (!selectedItem.value) {
-    notice.value = 'Choose an inventory item before saving edits.';
+    setNotice('inventory.notice.chooseBeforeSave');
     return;
   }
 
@@ -194,10 +232,12 @@ async function saveInventoryItem() {
       return updatedItem;
     });
 
-    notice.value = `Updated inventory item ${updatedItem.name}.`;
+    setNotice('inventory.notice.updated', {
+      name: displayInventoryName(updatedItem.name, currentLocale.value),
+    });
     closeDialog();
   } catch (error) {
-    notice.value = error instanceof Error ? error.message : 'Unable to update inventory item.';
+    setErrorNotice(error, 'inventory.notice.updateError');
   } finally {
     isLoading.value = false;
   }
@@ -205,7 +245,43 @@ async function saveInventoryItem() {
 
 function clearSearch() {
   query.value = '';
-  notice.value = 'Showing all inventory items.';
+  setNotice('inventory.notice.showingAll');
+}
+
+function displayInventoryItem(item: InventoryItem): DisplayInventoryItem {
+  return {
+    ...item,
+    displayName: displayInventoryName(item.name, currentLocale.value),
+    displayCategory: displayInventoryCategory(item.category, currentLocale.value),
+    displayStatus: t(`statuses.${item.status}`),
+  };
+}
+
+function inventorySearchValues(item: InventoryItem): string[] {
+  return [
+    item.sku,
+    item.name,
+    item.category,
+    displayInventoryName(item.name, currentLocale.value),
+    displayInventoryCategory(item.category, currentLocale.value),
+  ];
+}
+
+function statusColor(status: InventoryStatus): string {
+  return status === 'active' ? 'success' : 'warning';
+}
+
+function setNotice(messageKey: string, params?: Record<string, number | string>) {
+  noticeState.value = { messageKey, params };
+}
+
+function setErrorNotice(error: unknown, fallbackKey: string) {
+  if (error instanceof Error) {
+    noticeState.value = { message: error.message };
+    return;
+  }
+
+  setNotice(fallbackKey);
 }
 
 function blankForm(): InventoryForm {
@@ -231,230 +307,223 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<ApiEnv
 </script>
 
 <template>
-  <main class="inventory-page">
+  <main class="inventory-page" :data-locale="currentLocale">
     <header class="page-header" aria-labelledby="page-title">
       <div>
-        <p class="eyebrow">WebAgentFlow Validation Site</p>
-        <h1 id="page-title">Inventory Management</h1>
-        <p class="subtitle">
-          Product-like inventory list for searching, editing, creating, and exporting records.
-        </p>
+        <p class="eyebrow">{{ t('app.brand') }}</p>
+        <h1 id="page-title" class="page-title">{{ t('inventory.title') }}</h1>
+        <p class="subtitle">{{ t('inventory.subtitle') }}</p>
       </div>
 
-      <div class="summary-grid" aria-label="Inventory summary">
-        <div>
-          <span class="summary-value">{{ items.length }}</span>
-          <span class="summary-label">Items</span>
-        </div>
-        <div>
-          <span class="summary-value">{{ totalStock }}</span>
-          <span class="summary-label">Units</span>
-        </div>
-        <div>
-          <span class="summary-value">{{ activeCount }}</span>
-          <span class="summary-label">Active</span>
-        </div>
-        <div>
-          <span class="summary-value">{{ pausedCount }}</span>
-          <span class="summary-label">Paused</span>
-        </div>
+      <div class="summary-grid" :aria-label="t('inventory.summaryLabel')">
+        <a-card class="summary-card" size="small">
+          <a-statistic :title="t('inventory.table.items')" :value="items.length" />
+        </a-card>
+        <a-card class="summary-card" size="small">
+          <a-statistic :title="t('inventory.table.units')" :value="totalStock" />
+        </a-card>
+        <a-card class="summary-card" size="small">
+          <a-statistic :title="t('statuses.active')" :value="activeCount" />
+        </a-card>
+        <a-card class="summary-card" size="small">
+          <a-statistic :title="t('statuses.paused')" :value="pausedCount" />
+        </a-card>
       </div>
     </header>
 
-    <p class="status-message" role="status" aria-live="polite">{{ notice }}</p>
+    <a-alert class="notice-alert" type="info" show-icon :message="notice" role="status" />
 
-    <section class="toolbar" aria-label="Inventory search and actions">
-      <label for="inventory-search">Search inventory</label>
-      <div class="search-row inventory-actions">
-        <input
+    <a-card class="surface-card" :title="t('inventory.searchLabel')">
+      <div class="toolbar-row" :aria-label="t('inventory.searchActionsLabel')">
+        <a-input-search
           id="inventory-search"
-          v-model="query"
-          type="search"
-          placeholder="Search by SKU, name, or category"
+          v-model:value="query"
+          class="search-input"
+          allow-clear
+          :placeholder="t('inventory.searchPlaceholder')"
         />
-        <button type="button" class="secondary-button" @click="clearSearch">Clear</button>
-        <a class="secondary-button download-link" :href="downloadHref" download="inventory-export.csv">
-          Download CSV
-        </a>
-        <button type="button" class="primary-button inline-button" @click="openCreateDialog">
-          New inventory item
-        </button>
+        <a-button @click="clearSearch">{{ t('common.clear') }}</a-button>
+        <a-button :href="downloadHref" download="inventory-export.csv">
+          {{ t('inventory.actions.downloadCsv') }}
+        </a-button>
+        <a-button type="primary" @click="openCreateDialog">
+          {{ t('inventory.actions.create') }}
+        </a-button>
       </div>
-    </section>
+    </a-card>
 
-    <section class="inventory-table-section" aria-labelledby="inventory-list-heading">
-      <div class="section-heading">
-        <div>
-          <h2 id="inventory-list-heading">Inventory list</h2>
-          <p>{{ filteredItems.length }} visible records</p>
-        </div>
-      </div>
-
-      <div v-if="isLoading && !filteredItems.length" class="empty-state">
-        <h3>Loading inventory items</h3>
-        <p>Waiting for the backend inventory API.</p>
-      </div>
-
-      <div v-else-if="filteredItems.length" class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">SKU</th>
-              <th scope="col">Name</th>
-              <th scope="col">Category</th>
-              <th scope="col">Stock</th>
-              <th scope="col">Status</th>
-              <th scope="col">Updated</th>
-              <th scope="col">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in filteredItems" :key="item.id">
-              <td>{{ item.sku }}</td>
-              <td>{{ item.name }}</td>
-              <td>{{ item.category }}</td>
-              <td>{{ item.stock }}</td>
-              <td>
-                <span class="status-pill" :class="`status-${item.status}`">
-                  {{ item.status }}
-                </span>
-              </td>
-              <td>{{ item.updatedAt }}</td>
-              <td>
-                <button type="button" class="text-button" @click="openEditDialog(item)">
-                  Edit
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div v-else class="empty-state">
-        <h3>No inventory items found</h3>
-        <p>Try a different SKU, name, or category.</p>
-      </div>
-    </section>
-
-    <dialog
-      ref="dialogRef"
-      class="inventory-dialog"
-      aria-labelledby="inventory-dialog-title"
-      @cancel.prevent="closeDialog"
-    >
-      <form class="dialog-panel" method="dialog" @submit.prevent="submitInventoryForm">
-        <div class="dialog-header">
+    <a-card class="surface-card">
+      <template #title>
+        <div class="section-title-row">
           <div>
-            <h2 id="inventory-dialog-title">{{ dialogTitle }}</h2>
-            <p v-if="isEditMode && selectedItem">Editing {{ selectedItem.sku }}.</p>
-            <p v-else>Add a record to the inventory list.</p>
+            <h2 class="section-heading">{{ t('inventory.listTitle') }}</h2>
+            <p>{{ t('inventory.visibleRecords', { count: filteredItems.length }) }}</p>
           </div>
-          <button type="button" class="icon-button" aria-label="Close inventory dialog" @click="closeDialog">
-            x
-          </button>
         </div>
+      </template>
 
-        <label for="inventory-form-sku">SKU</label>
-        <input
-          id="inventory-form-sku"
-          v-model="form.sku"
-          :disabled="isEditMode"
-          required
-          autocomplete="off"
-        />
+      <a-spin :spinning="isLoading && !filteredItems.length" :tip="t('inventory.loadingTitle')">
+        <a-table
+          v-if="filteredItems.length"
+          :columns="tableColumns"
+          :data-source="filteredItems.map(displayInventoryItem)"
+          :loading="isLoading"
+          row-key="id"
+          :pagination="{ pageSize: 8, showSizeChanger: false }"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'status'">
+              <a-tag :color="statusColor(record.status)">
+                {{ record.displayStatus }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <a-button class="table-action" type="link" @click="openEditDialog(record)">
+                {{ t('inventory.actions.edit') }}
+              </a-button>
+            </template>
+          </template>
+        </a-table>
 
-        <label for="inventory-form-name">Name</label>
-        <input id="inventory-form-name" v-model="form.name" required autocomplete="off" />
+        <a-empty v-else>
+          <template #description>
+            <div class="empty-copy">
+              <strong>
+                {{ isLoading ? t('inventory.loadingTitle') : t('inventory.emptyTitle') }}
+              </strong>
+              <p>
+                {{ isLoading ? t('inventory.loadingDescription') : t('inventory.emptyDescription') }}
+              </p>
+            </div>
+          </template>
+        </a-empty>
+      </a-spin>
+    </a-card>
 
-        <label for="inventory-form-category">Category</label>
-        <input id="inventory-form-category" v-model="form.category" required autocomplete="off" />
+    <a-modal
+      :open="isDialogOpen"
+      :title="dialogTitle"
+      :footer="null"
+      :destroy-on-close="true"
+      @cancel="closeDialog"
+    >
+      <p class="dialog-description">{{ dialogDescription }}</p>
 
-        <label for="inventory-form-stock">Stock quantity</label>
-        <input id="inventory-form-stock" v-model.number="form.stock" type="number" min="0" required />
+      <a-form :model="form" layout="vertical" @finish="submitInventoryForm">
+        <a-form-item
+          :label="t('inventory.fields.sku')"
+          name="sku"
+          :rules="[{ required: true, message: t('inventory.fields.sku') }]"
+        >
+          <a-input v-model:value="form.sku" :disabled="isEditMode" autocomplete="off" />
+        </a-form-item>
 
-        <label for="inventory-form-status">Status</label>
-        <select id="inventory-form-status" v-model="form.status">
-          <option value="active">Active</option>
-          <option value="paused">Paused</option>
-        </select>
+        <a-form-item
+          :label="t('inventory.fields.name')"
+          name="name"
+          :rules="[{ required: true, message: t('inventory.fields.name') }]"
+        >
+          <a-input v-model:value="form.name" autocomplete="off" />
+        </a-form-item>
+
+        <a-form-item
+          :label="t('inventory.fields.category')"
+          name="category"
+          :rules="[{ required: true, message: t('inventory.fields.category') }]"
+        >
+          <a-input v-model:value="form.category" autocomplete="off" />
+        </a-form-item>
+
+        <a-form-item
+          :label="t('inventory.fields.stock')"
+          name="stock"
+          :rules="[{ required: true, message: t('inventory.fields.stock') }]"
+        >
+          <a-input-number v-model:value="form.stock" class="full-width" :min="0" :precision="0" />
+        </a-form-item>
+
+        <a-form-item :label="t('inventory.fields.status')" name="status">
+          <a-select v-model:value="form.status" :options="statusOptions" />
+        </a-form-item>
 
         <div class="dialog-actions">
-          <button type="button" class="secondary-button" @click="closeDialog">Cancel</button>
-          <button type="submit" class="primary-button inline-button" :disabled="isLoading">
-            {{ isEditMode ? 'Save edits' : 'Create item' }}
-          </button>
+          <a-button @click="closeDialog">{{ t('common.cancel') }}</a-button>
+          <a-button type="primary" html-type="submit" :loading="isLoading">
+            {{ isEditMode ? t('inventory.actions.save') : t('inventory.actions.submitCreate') }}
+          </a-button>
         </div>
-      </form>
-    </dialog>
+      </a-form>
+    </a-modal>
   </main>
 </template>
 
 <style scoped>
-.inventory-actions {
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+.inventory-page {
+  width: min(var(--page-max), 100%);
+  margin: 0 auto;
+  padding: var(--page-padding);
 }
 
-.inline-button {
-  width: auto;
-  margin-top: 0;
-  white-space: nowrap;
+.summary-grid {
+  align-items: stretch;
 }
 
-.inventory-dialog {
-  width: min(560px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
-  padding: 0;
-  color: #172026;
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 24px 80px rgb(20 32 24 / 26%);
+.summary-card {
+  border-color: var(--border);
 }
 
-.inventory-dialog::backdrop {
-  background: rgb(17 31 26 / 42%);
+.summary-card :deep(.ant-card-body) {
+  padding: 14px;
 }
 
-.dialog-panel {
-  display: grid;
-  gap: 10px;
-  padding: 18px;
+.notice-alert,
+.surface-card {
+  margin-bottom: 18px;
 }
 
-.dialog-header {
+.surface-card {
+  border-color: var(--border);
+}
+
+.toolbar-row {
   display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 4px;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
 }
 
-.dialog-header p {
-  margin-bottom: 0;
+.search-input {
+  min-width: min(360px, 100%);
+  flex: 1 1 360px;
+}
+
+.section-heading {
+  margin-bottom: 4px;
+  font-size: 1.2rem;
+}
+
+.empty-copy p {
+  margin: 6px 0 0;
   color: var(--muted);
 }
 
-.icon-button {
-  width: 36px;
-  min-height: 36px;
-  color: var(--accent-dark);
-  background: #e4eee9;
-  font-size: 1.1rem;
-  font-weight: 800;
+.dialog-description {
+  margin-bottom: 18px;
+  color: var(--muted);
+}
+
+.full-width {
+  width: 100%;
 }
 
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 8px;
 }
 
 @media (max-width: 720px) {
-  .inventory-actions {
-    grid-template-columns: 1fr;
-  }
-
+  .toolbar-row,
   .dialog-actions {
     display: grid;
     grid-template-columns: 1fr;

@@ -76,6 +76,28 @@ test('inventory API creates records and exports the table as CSV', async () => {
   }
 });
 
+test('inventory CSV can localize headers and seeded business values', async () => {
+  const api = await startServer();
+
+  try {
+    const zhResponse = await fetch(`${api.baseUrl}/api/inventory/export.csv?locale=zh-CN`);
+    const zhCsv = await zhResponse.text();
+
+    assert.equal(zhResponse.status, 200);
+    assert.match(zhCsv, /^SKU,名称,分类,库存,状态,更新时间/m);
+    assert.match(zhCsv, /NB-ALP-001,高山笔记本,文具,24,启用,/);
+
+    const jaResponse = await fetch(`${api.baseUrl}/api/inventory/export.csv?locale=ja-JP`);
+    const jaCsv = await jaResponse.text();
+
+    assert.equal(jaResponse.status, 200);
+    assert.match(jaCsv, /^SKU,名前,カテゴリー,在庫,ステータス,更新日時/m);
+    assert.match(jaCsv, /NB-ALP-001,アルパインノート,文具,24,有効,/);
+  } finally {
+    await api.close();
+  }
+});
+
 test('inventory API updates records and filters CSV export by query', async () => {
   const api = await startServer();
 
