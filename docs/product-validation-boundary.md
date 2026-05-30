@@ -53,20 +53,24 @@ during migration.
 
 ## Main Repository Boundary
 
-The WebAgentFlow main repository may know:
+The WebAgentFlow main repository may know only redacted provider output:
 
-- target URL
-- scenario id
-- user intent
-- allowed operations
-- forbidden operations
-- high-level expected behavior
-- result artifacts
+- opaque target reference
+- opaque case reference
+- aggregate status
+- provider gate names
+- redacted result artifacts
 
 The WebAgentFlow main repository should not know:
 
+- target URL or local port
+- scenario details
+- user intent text used by this provider
+- allowed or forbidden operation details
+- high-level expected behavior for this private site
 - page source code
 - component names
+- target paths
 - DOM selectors
 - `data-testid` values
 - internal state shape
@@ -79,3 +83,7 @@ The WebAgentFlow main repository should not know:
 WebAgentFlow should treat this site as a black-box target. The validation signal
 is visible product behavior and public product-like responses, not
 implementation detail access.
+
+The only artifact intended for WebAgentFlow consumption is a redacted provider
+summary shaped like `waf.eval.result.v1`. Private runbooks, scenario catalogs,
+screenshots, traces, DOM, and raw browser output stay in this repository.

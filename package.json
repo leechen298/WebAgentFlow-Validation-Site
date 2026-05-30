@@ -9,6 +9,7 @@
     "dev:api": "node server/index.mjs",
     "dev:lan": "node scripts/dev.mjs --host 0.0.0.0",
     "test": "node --test tests/*.test.mjs",
+    "eval:summary": "node evals/write-redacted-summary.mjs",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview --port 5177"
   },
