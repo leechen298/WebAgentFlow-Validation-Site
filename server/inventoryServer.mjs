@@ -32,8 +32,27 @@ const seedItems = [
   },
 ];
 
+const seedUsers = [
+  seedUser(1, 'alice', 'alice@example.com', 'admin', 'active', '2024-03-15', 'CN/Zhejiang/Hangzhou', 'Engineering', '2026-04-17T09:30:00'),
+  seedUser(2, 'bob', 'bob@example.com', 'user', 'active', '2024-07-22', 'CN/Zhejiang/Ningbo', 'Sales', '2026-04-16T14:15:00'),
+  seedUser(3, 'carol', 'carol@example.com', 'user', 'active', '2025-01-08', 'CN/Jiangsu/Suzhou', 'Engineering', '2026-04-18T08:45:00'),
+  seedUser(4, 'dave', 'dave@example.com', 'admin', 'disabled', '2023-11-03', 'CN/Beijing/Chaoyang', 'Operations', '2025-12-01T11:20:00'),
+  seedUser(5, 'eve', 'eve@example.com', 'guest', 'active', '2025-09-14', 'US/California/San Jose', 'Marketing', '2026-04-15T16:00:00'),
+  seedUser(6, 'frank', 'frank@example.com', 'user', 'active', '2024-05-20', 'CN/Jiangsu/Nanjing', 'Engineering', '2026-04-18T10:10:00'),
+  seedUser(7, 'grace', 'grace@example.com', 'user', 'disabled', '2024-02-28', 'CN/Shanghai/Pudong', 'Finance', '2025-11-10T13:05:00'),
+  seedUser(8, 'henry', 'henry@example.com', 'admin', 'active', '2023-06-01', 'CN/Beijing/Haidian', 'Engineering', '2026-04-17T22:40:00'),
+  seedUser(9, 'irene', 'irene@example.com', 'user', 'active', '2025-03-30', 'CN/Guangdong/Shenzhen', 'Sales', '2026-04-16T09:50:00'),
+  seedUser(10, 'jack', 'jack@example.com', 'guest', 'disabled', '2024-12-05', 'US/New York/Brooklyn', 'Marketing', '2025-10-18T12:30:00'),
+  seedUser(11, 'karen', 'karen@example.com', 'user', 'active', '2025-06-11', 'CN/Zhejiang/Hangzhou', 'Operations', '2026-04-18T07:15:00'),
+  seedUser(12, 'leo', 'leo@example.com', 'user', 'active', '2024-08-19', 'CN/Shanghai/Xuhui', 'Engineering', '2026-04-14T19:25:00'),
+  seedUser(13, 'mia', 'mia@example.com', 'admin', 'active', '2024-10-07', 'CN/Jiangsu/Suzhou', 'Finance', '2026-04-17T15:00:00'),
+  seedUser(14, 'nathan', 'nathan@example.com', 'user', 'active', '2025-02-02', 'CN/Beijing/Chaoyang', 'Engineering', '2026-04-18T11:35:00'),
+  seedUser(15, 'olivia', 'olivia@example.com', 'guest', 'active', '2025-11-25', 'US/California/San Francisco', 'Marketing', '2026-04-15T10:00:00'),
+];
+
 export function createInventoryServer() {
   const items = seedItems.map((item) => ({ ...item }));
+  const users = seedUsers.map((user) => ({ ...user }));
 
   return createServer(async (request, response) => {
     setCorsHeaders(response);
@@ -88,6 +107,30 @@ export function createInventoryServer() {
         return;
       }
 
+      if (request.method === 'GET' && isUserOptionsPath(url.pathname)) {
+        sendJson(response, 200, ok(buildUserOptions(users)));
+        return;
+      }
+
+      if (request.method === 'GET' && isUsersListPath(url.pathname)) {
+        sendJson(response, 200, ok(listUsers(users, url.searchParams)));
+        return;
+      }
+
+      const userMatch = url.pathname.match(/^\/(?:api|validation-api)\/users\/(\d+)$/);
+      if (request.method === 'GET' && userMatch) {
+        const id = Number(userMatch[1]);
+        const user = users.find((candidate) => candidate.id === id);
+
+        if (!user) {
+          sendJson(response, 404, error(404, `User not found: id=${id}`));
+          return;
+        }
+
+        sendJson(response, 200, ok(user));
+        return;
+      }
+
       sendJson(response, 404, error(404, 'Not found.'));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Request failed.';
@@ -95,6 +138,20 @@ export function createInventoryServer() {
       sendJson(response, statusCode, error(statusCode, message));
     }
   });
+}
+
+function seedUser(id, name, email, role, status, registeredAt, region, department, lastLoginAt) {
+  return {
+    id,
+    name,
+    email,
+    role,
+    status,
+    registered_at: registeredAt,
+    region,
+    department,
+    last_login_at: lastLoginAt,
+  };
 }
 
 function ok(data) {
@@ -229,6 +286,143 @@ function filterItems(items, query) {
       value.toLowerCase().includes(normalizedQuery),
     ),
   );
+}
+
+function isUsersListPath(pathname) {
+  return pathname === '/api/users' || pathname === '/validation-api/users';
+}
+
+function isUserOptionsPath(pathname) {
+  return (
+    pathname === '/api/users/meta/options' ||
+    pathname === '/validation-api/users/meta/options'
+  );
+}
+
+function listUsers(users, searchParams) {
+  let filtered = [...users];
+
+  const name = searchParams.get('name')?.trim().toLowerCase();
+  const email = searchParams.get('email')?.trim().toLowerCase();
+  const role = searchParams.get('role')?.trim();
+  const status = searchParams.get('status')?.trim();
+  const registeredFrom = searchParams.get('registered_from')?.trim();
+  const registeredTo = searchParams.get('registered_to')?.trim();
+  const regionPrefix = searchParams.get('region_prefix')?.trim();
+  const month = searchParams.get('month')?.trim();
+  const department = searchParams.get('department')?.trim();
+  const sortBy = searchParams.get('sort_by')?.trim();
+  const sortOrder = searchParams.get('sort_order') === 'desc' ? 'desc' : 'asc';
+
+  if (name) {
+    filtered = filtered.filter((user) => user.name.toLowerCase().includes(name));
+  }
+
+  if (email) {
+    filtered = filtered.filter((user) => user.email.toLowerCase().includes(email));
+  }
+
+  if (role) {
+    filtered = filtered.filter((user) => user.role === role);
+  }
+
+  if (status) {
+    filtered = filtered.filter((user) => user.status === status);
+  }
+
+  if (registeredFrom) {
+    filtered = filtered.filter((user) => user.registered_at >= registeredFrom);
+  }
+
+  if (registeredTo) {
+    filtered = filtered.filter((user) => user.registered_at <= registeredTo);
+  }
+
+  if (regionPrefix) {
+    filtered = filtered.filter((user) => user.region.startsWith(regionPrefix));
+  }
+
+  if (/^\d{4}-\d{2}$/.test(month ?? '')) {
+    filtered = filtered.filter((user) => user.registered_at.startsWith(`${month}-`));
+  }
+
+  if (department) {
+    const departments = new Set(
+      department
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    );
+
+    if (departments.size > 0) {
+      filtered = filtered.filter((user) => departments.has(user.department));
+    }
+  }
+
+  if (sortBy && ['id', 'name', 'email', 'role', 'status', 'registered_at'].includes(sortBy)) {
+    filtered.sort((a, b) => {
+      const left = String(a[sortBy]);
+      const right = String(b[sortBy]);
+      return sortOrder === 'desc' ? right.localeCompare(left) : left.localeCompare(right);
+    });
+  }
+
+  return {
+    total: filtered.length,
+    items: filtered,
+  };
+}
+
+function buildUserOptions(users) {
+  return {
+    roles: uniqueSorted(users.map((user) => user.role)),
+    statuses: uniqueSorted(users.map((user) => user.status)),
+    departments: uniqueSorted(users.map((user) => user.department)),
+    regions: buildRegionTree(users),
+  };
+}
+
+function uniqueSorted(values) {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function buildRegionTree(users) {
+  const tree = new Map();
+
+  for (const user of users) {
+    const [country, province, city] = user.region.split('/');
+
+    if (!country || !province || !city) {
+      continue;
+    }
+
+    if (!tree.has(country)) {
+      tree.set(country, new Map());
+    }
+
+    const provinces = tree.get(country);
+    if (!provinces.has(province)) {
+      provinces.set(province, new Set());
+    }
+
+    provinces.get(province).add(city);
+  }
+
+  return [...tree.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([country, provinces]) => ({
+      value: country,
+      label: country,
+      children: [...provinces.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([province, cities]) => ({
+          value: province,
+          label: province,
+          children: [...cities]
+            .sort((left, right) => left.localeCompare(right))
+            .map((city) => ({ value: city, label: city })),
+        })),
+    }));
 }
 
 function escapeCsvCell(value) {

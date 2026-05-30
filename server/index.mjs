@@ -6,7 +6,7 @@ const port = Number(process.env.VALIDATION_API_PORT ?? 8003);
 const server = createInventoryServer();
 
 server.listen(port, host, () => {
-  console.log(`Inventory API listening on http://${host}:${port}`);
+  console.log(`Validation API listening on http://${host}:${port}`);
 });
 
 function shutdown() {

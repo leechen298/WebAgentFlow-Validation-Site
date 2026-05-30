@@ -10,6 +10,7 @@ interface ValidationPage {
   specId?: string;
   scenarios?: string[];
   notes?: string;
+  actionLabel: string;
 }
 
 const pages: ValidationPage[] = [
@@ -19,10 +20,21 @@ const pages: ValidationPage[] = [
     name: 'Inventory Management',
     path: '/inventory',
     description:
-      'Product-like inventory surface for creating, searching, and editing records during WebAgentFlow black-box validation.',
+      'Inventory list page for searching, editing, creating, and exporting records during WebAgentFlow validation.',
     specId: 'inventory',
     scenarios: ['create_inventory_item', 'search_inventory_items', 'edit_inventory_item'],
-    notes: 'Primary target for the external validation run.',
+    actionLabel: 'Open Inventory Management',
+  },
+  {
+    id: 'users',
+    category: 'Listing & Search',
+    name: 'User Directory',
+    path: '/users',
+    description:
+      'Fixture-style user list page for search filters, row detail actions, and no-match validation cases.',
+    specId: 'users',
+    scenarios: ['filter_by_name', 'filter_by_status', 'no_match'],
+    actionLabel: 'Open User Directory',
   },
 ];
 
@@ -112,7 +124,9 @@ function workbenchUrl(page: ValidationPage): string {
           </dl>
 
           <div class="actions">
-            <router-link class="action-button primary-action" :to="page.path">Open</router-link>
+            <router-link class="action-button primary-action" :to="page.path">
+              {{ page.actionLabel }}
+            </router-link>
             <a
               v-if="page.specId"
               class="action-button secondary-action"

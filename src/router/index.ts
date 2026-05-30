@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import IndexPage from '../pages/IndexPage.vue';
 import InventoryPage from '../pages/InventoryPage.vue';
+import UserDirectoryPage from '../pages/UserDirectoryPage.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -14,6 +15,11 @@ const router = createRouter({
       path: '/inventory',
       name: 'inventory',
       component: InventoryPage,
+    },
+    {
+      path: '/users',
+      name: 'users',
+      component: UserDirectoryPage,
     },
   ],
 });

@@ -12,10 +12,11 @@ The local catalog page lists available validation surfaces:
 http://127.0.0.1:5177/
 ```
 
-The first validation surface is an inventory management page:
+Current validation surfaces:
 
 ```text
 http://127.0.0.1:5177/inventory
+http://127.0.0.1:5177/users
 ```
 
 This repository migrates product validation scenario intent from the historical
@@ -29,13 +30,18 @@ It gives WebAgentFlow a realistic business page for black-box browser operation
 checks without colocating the site implementation with WebAgentFlow runtime code,
 prompts, or eval runners.
 
-The first scenario is **Inventory Validation Site**. It supports safe inventory
-operations:
+The catalog currently links two validation surfaces:
 
-- create an inventory item
-- search inventory items
-- edit an inventory item
-- download the visible inventory table as CSV
+- **Inventory Management** supports safe inventory operations:
+  - create an inventory item in a dialog
+  - search inventory items
+  - edit an inventory item in a dialog
+  - download the visible inventory table as CSV
+- **User Directory** mirrors the fixture-site `/users` list page shape:
+  - search by name, email, role, status, date, region, month, and department
+  - open row-level user details
+  - exercise no-match list states
+
 
 ## Boundary
 
@@ -67,22 +73,27 @@ pnpm dev
 `pnpm dev` starts both services:
 
 - frontend: `http://127.0.0.1:5177`
-- inventory API: `http://127.0.0.1:8003`
+- validation API: `http://127.0.0.1:8003`
 
 Default local catalog and target:
 
 ```text
 http://127.0.0.1:5177/
 http://127.0.0.1:5177/inventory
+http://127.0.0.1:5177/users
 ```
 
-Inventory API endpoints used by the page:
+API endpoints used by the pages:
 
 ```text
 GET  /api/inventory
 POST /api/inventory
 PUT  /api/inventory/:id
 GET  /api/inventory/export.csv
+
+GET  /api/users
+GET  /api/users/meta/options
+GET  /api/users/:id
 ```
 
 LAN development target:
